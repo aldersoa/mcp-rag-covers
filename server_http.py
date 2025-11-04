@@ -9,14 +9,13 @@ import uvicorn
 
 from covers_core import search_cover_art_core
 
-# ---- JSON-RPC helpers --------------------------------------------------------
 def rpc_ok(_id: Any, result: Dict[str, Any]) -> JSONResponse:
     return JSONResponse({"jsonrpc": "2.0", "id": _id, "result": result})
 
 def rpc_err(_id: Any, code: int, msg: str, status: int = 400) -> JSONResponse:
-    return JSONResponse({"jsonrpc": "2.0", "id": _id, "error": {"code": code, "message": msg}}, status_code=status)
+    return JSONResponse({"jsonrpc": "2.0", "id": _id,
+                         "error": {"code": code, "message": msg}}, status_code=status)
 
-# ---- MCP tool schema ---------------------------------------------------------
 TOOL = {
     "name": "search_cover_art",
     "description": "Return album covers for a free-form query (e.g., 'by metallica' or 'metal bands').",
@@ -30,12 +29,14 @@ TOOL = {
     }
 }
 
-# ---- Handlers ----------------------------------------------------------------
-async def health(request):
+async def health(_request):
     return JSONResponse({"ok": True, "mcp": True})
 
+async def options_root(_request):
+    # Satisfy any preflight / generic probe
+    return PlainTextResponse("", status_code=204)
+
 async def mcp_endpoint(request):
-    # Accept POST JSON-RPC 2.0
     if request.method != "POST":
         return PlainTextResponse("MCP expects POST JSON-RPC 2.0", status_code=405)
 
@@ -47,6 +48,14 @@ async def mcp_endpoint(request):
     _id = body.get("id")
     method = body.get("method")
     params = body.get("params", {}) or {}
+
+    # Optional: minimal initialize handler (some clients probe it)
+    if method == "initialize":
+        return rpc_ok(_id, {
+            "serverInfo": {"name": "covers-mcp", "version": "0.1.0"},
+            "protocol": "mcp",
+            "capabilities": {"tools": {"listChanged": False}}
+        })
 
     if method == "tools/list":
         return rpc_ok(_id, {"tools": [TOOL]})
@@ -60,7 +69,6 @@ async def mcp_endpoint(request):
         lim = int(args.get("limit", 8))
         if not isinstance(q, str) or not q.strip():
             return rpc_err(_id, -32602, "Missing required argument: query")
-
         data = await search_cover_art_core(q, lim, debug=False)
         results: List[Dict[str, Any]] = data["results"]
         return rpc_ok(_id, {"content": [{"type": "json", "json": results[:lim]}]})
@@ -68,16 +76,17 @@ async def mcp_endpoint(request):
     return rpc_err(_id, -32601, "Method not found")
 
 app = Starlette(debug=False, routes=[
-    Route("/", mcp_endpoint, methods=["POST"]),  # JSON-RPC
-    Route("/", health, methods=["GET"]),         # health probe
+    Route("/", mcp_endpoint, methods=["POST"]),
+    Route("/", health, methods=["GET"]),
+    Route("/", options_root, methods=["OPTIONS"]),  # <-- explicit OPTIONS handler
 ])
 
-# Permissive CORS for connector creation & browser preflights
+# Permissive CORS so the connector’s preflight succeeds
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST", "OPTIONS", "GET"],
-    allow_headers=["*"],
+    allow_methods=["*"],   # allow all for simplicity
+    allow_headers=["*"],   # allow Authorization, etc.
 )
 
 if __name__ == "__main__":
