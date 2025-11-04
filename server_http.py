@@ -57,6 +57,13 @@ async def mcp_endpoint(request):
             "capabilities": {"tools": {"listChanged": False}}
         })
 
+    if method == "initialize":
+        return rpc_ok(_id, {
+        "serverInfo": {"name": "covers-mcp", "version": "0.1.0"},
+        "protocol": "mcp",
+        "capabilities": {"tools": {"listChanged": False}}
+    })
+
     if method == "tools/list":
         return rpc_ok(_id, {"tools": [TOOL]})
 
