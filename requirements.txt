@@ -1,6 +1,8 @@
 mcp>=0.3.0
-httpx
 fastapi
-uvicorn
 certifi
-starlette
+fastmcp>=0.3.0
+httpx>=0.27
+starlette>=0.37
+uvicorn>=0.30
+sse-starlette>=2.0.0
