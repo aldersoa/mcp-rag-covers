@@ -9,7 +9,6 @@ import uvicorn
 
 from covers_core import search_cover_art_core
 
-# ---------- JSON-RPC helpers ----------
 def rpc_ok(_id: Any, result: Dict[str, Any]) -> JSONResponse:
     return JSONResponse({"jsonrpc": "2.0", "id": _id, "result": result})
 
@@ -19,12 +18,12 @@ def rpc_err(_id: Any, code: int, msg: str, status: int = 400) -> JSONResponse:
         status_code=status
     )
 
-# ---------- Tool schema (tighter JSON Schema) ----------
 TOOL = {
     "name": "search_cover_art",
     "description": "Return album covers for a free-form query (e.g., 'by metallica' or 'metal bands').",
     "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        # Switch to draft-07 for maximum compatibility
+        "$schema": "http://json-schema.org/draft-07/schema#",
         "title": "SearchCoverArtArgs",
         "type": "object",
         "properties": {
@@ -47,13 +46,11 @@ TOOL = {
     }
 }
 
-# ---------- Handlers ----------
 async def health_mcp(_request):
-    # Handy for GET/HEAD probes
     return JSONResponse({"ok": True, "mcp": True, "path": "/mcp"})
 
 async def options_mcp(_request):
-    # 204; CORS middleware will attach the allow-* headers
+    # IMPORTANT: 204 (not 200) for preflight
     return PlainTextResponse("", status_code=204)
 
 async def mcp_endpoint(request):
@@ -69,7 +66,6 @@ async def mcp_endpoint(request):
     method = body.get("method")
     params = body.get("params", {}) or {}
 
-    # Optional but often expected by clients
     if method == "initialize":
         return rpc_ok(_id, {
             "serverInfo": {"name": "covers-mcp", "version": "0.1.0"},
@@ -87,7 +83,6 @@ async def mcp_endpoint(request):
             return rpc_err(_id, -32601, f"Unknown tool: {name}")
         q = args.get("query")
         lim = args.get("limit", 8)
-        # robust int + clamp
         try:
             lim = int(lim)
         except Exception:
@@ -111,13 +106,13 @@ app = Starlette(
     ],
 )
 
-# Permissive CORS so the connector’s preflight succeeds
+# Permissive CORS so connector preflights succeed
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_credentials=False,  # keep False with "*" origins
+    allow_credentials=False,
 )
 
 if __name__ == "__main__":
