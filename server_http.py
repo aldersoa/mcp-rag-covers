@@ -17,16 +17,18 @@ def rpc_err(_id: Any, code: int, msg: str, status: int = 400) -> JSONResponse:
                          "error": {"code": code, "message": msg}}, status_code=status)
 
 TOOL = {
-    "name": "search_cover_art",
-    "description": "Return album covers for a free-form query (e.g., 'by metallica' or 'metal bands').",
-    "inputSchema": {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string"},
-            "limit": {"type": "number"}
-        },
-        "required": ["query"]
-    }
+  "name": "search_cover_art",
+  "description": "Return album covers…",
+  "inputSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "query": {"type": "string", "title": "Query"},
+      "limit": {"type": "integer", "title": "Limit", "minimum": 1, "maximum": 50, "default": 8}
+    },
+    "required": ["query"],
+    "additionalProperties": False
+  }
 }
 
 async def health(_request):
