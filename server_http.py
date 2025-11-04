@@ -18,32 +18,35 @@ def rpc_err(_id: Any, code: int, msg: str, status: int = 400) -> JSONResponse:
         status_code=status
     )
 
+SCHEMA = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "SearchCoverArtArgs",
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "Free-form prompt like 'by metallica' or 'show me covers from metal bands'."
+        },
+        "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 8,
+            "description": "Max number of results to return."
+        }
+    },
+    "required": ["query"],
+    "additionalProperties": False
+}
+
 TOOL = {
     "name": "search_cover_art",
     "description": "Return album covers for a free-form query (e.g., 'by metallica' or 'metal bands').",
-    "inputSchema": {
-        # Switch to draft-07 for maximum compatibility
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "SearchCoverArtArgs",
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "title": "Query",
-                "description": "Free-form prompt like 'by metallica' or 'show me covers from metal bands'."
-            },
-            "limit": {
-                "type": "integer",
-                "title": "Limit",
-                "minimum": 1,
-                "maximum": 50,
-                "default": 8,
-                "description": "Max number of results to return."
-            }
-        },
-        "required": ["query"],
-        "additionalProperties": False
-    }
+    # Provide BOTH forms for maximum compatibility
+    "inputSchema": SCHEMA,     # camelCase
+    "input_schema": SCHEMA     # snake_case (MCP spec)
 }
 
 async def health_mcp(_request):
