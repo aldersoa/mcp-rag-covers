@@ -82,11 +82,15 @@ async def mcp_endpoint(request):
 
     return rpc_err(_id, -32601, "Method not found")
 
+async def health_mcp(_request):
+    return JSONResponse({"ok": True, "mcp": True, "path": "/mcp"})
+
 app = Starlette(debug=False, routes=[
-    Route("/", mcp_endpoint, methods=["POST"]),
-    Route("/", health, methods=["GET"]),
-    Route("/", options_root, methods=["OPTIONS"]),  # <-- explicit OPTIONS handler
+    Route("/mcp", mcp_endpoint, methods=["POST"]),
+    Route("/mcp", health_mcp, methods=["GET", "OPTIONS"]),
+    Route("/", health, methods=["GET", "HEAD"]),
 ])
+
 
 # Permissive CORS so the connector’s preflight succeeds
 app.add_middleware(
