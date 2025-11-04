@@ -9,33 +9,51 @@ import uvicorn
 
 from covers_core import search_cover_art_core
 
+# ---------- JSON-RPC helpers ----------
 def rpc_ok(_id: Any, result: Dict[str, Any]) -> JSONResponse:
     return JSONResponse({"jsonrpc": "2.0", "id": _id, "result": result})
 
 def rpc_err(_id: Any, code: int, msg: str, status: int = 400) -> JSONResponse:
-    return JSONResponse({"jsonrpc": "2.0", "id": _id,
-                         "error": {"code": code, "message": msg}}, status_code=status)
+    return JSONResponse(
+        {"jsonrpc": "2.0", "id": _id, "error": {"code": code, "message": msg}},
+        status_code=status
+    )
 
+# ---------- Tool schema (tighter JSON Schema) ----------
 TOOL = {
-  "name": "search_cover_art",
-  "description": "Return album covers…",
-  "inputSchema": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "type": "object",
-    "properties": {
-      "query": {"type": "string", "title": "Query"},
-      "limit": {"type": "integer", "title": "Limit", "minimum": 1, "maximum": 50, "default": 8}
-    },
-    "required": ["query"],
-    "additionalProperties": False
-  }
+    "name": "search_cover_art",
+    "description": "Return album covers for a free-form query (e.g., 'by metallica' or 'metal bands').",
+    "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "SearchCoverArtArgs",
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "title": "Query",
+                "description": "Free-form prompt like 'by metallica' or 'show me covers from metal bands'."
+            },
+            "limit": {
+                "type": "integer",
+                "title": "Limit",
+                "minimum": 1,
+                "maximum": 50,
+                "default": 8,
+                "description": "Max number of results to return."
+            }
+        },
+        "required": ["query"],
+        "additionalProperties": False
+    }
 }
 
-async def health(_request):
-    return JSONResponse({"ok": True, "mcp": True})
+# ---------- Handlers ----------
+async def health_mcp(_request):
+    # Handy for GET/HEAD probes
+    return JSONResponse({"ok": True, "mcp": True, "path": "/mcp"})
 
-async def options_root(_request):
-    # Satisfy any preflight / generic probe
+async def options_mcp(_request):
+    # 204; CORS middleware will attach the allow-* headers
     return PlainTextResponse("", status_code=204)
 
 async def mcp_endpoint(request):
@@ -51,20 +69,13 @@ async def mcp_endpoint(request):
     method = body.get("method")
     params = body.get("params", {}) or {}
 
-    # Optional: minimal initialize handler (some clients probe it)
+    # Optional but often expected by clients
     if method == "initialize":
         return rpc_ok(_id, {
             "serverInfo": {"name": "covers-mcp", "version": "0.1.0"},
             "protocol": "mcp",
             "capabilities": {"tools": {"listChanged": False}}
         })
-
-    if method == "initialize":
-        return rpc_ok(_id, {
-        "serverInfo": {"name": "covers-mcp", "version": "0.1.0"},
-        "protocol": "mcp",
-        "capabilities": {"tools": {"listChanged": False}}
-    })
 
     if method == "tools/list":
         return rpc_ok(_id, {"tools": [TOOL]})
@@ -75,31 +86,38 @@ async def mcp_endpoint(request):
         if name != TOOL["name"]:
             return rpc_err(_id, -32601, f"Unknown tool: {name}")
         q = args.get("query")
-        lim = int(args.get("limit", 8))
+        lim = args.get("limit", 8)
+        # robust int + clamp
+        try:
+            lim = int(lim)
+        except Exception:
+            lim = 8
+        lim = max(1, min(50, lim))
         if not isinstance(q, str) or not q.strip():
             return rpc_err(_id, -32602, "Missing required argument: query")
+
         data = await search_cover_art_core(q, lim, debug=False)
-        results: List[Dict[str, Any]] = data["results"]
-        return rpc_ok(_id, {"content": [{"type": "json", "json": results[:lim]}]})
+        results: List[Dict[str, Any]] = data["results"][:lim]
+        return rpc_ok(_id, {"content": [{"type": "json", "json": results}]})
 
     return rpc_err(_id, -32601, "Method not found")
 
-async def health_mcp(_request):
-    return JSONResponse({"ok": True, "mcp": True, "path": "/mcp"})
-
-app = Starlette(debug=False, routes=[
-    Route("/mcp", mcp_endpoint, methods=["POST"]),
-    Route("/mcp", health_mcp, methods=["GET", "OPTIONS"]),
-    Route("/", health, methods=["GET", "HEAD"]),
-])
-
+app = Starlette(
+    debug=False,
+    routes=[
+        Route("/mcp", mcp_endpoint, methods=["POST"]),
+        Route("/mcp", health_mcp, methods=["GET", "HEAD"]),
+        Route("/mcp", options_mcp, methods=["OPTIONS"]),
+    ],
+)
 
 # Permissive CORS so the connector’s preflight succeeds
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],   # allow all for simplicity
-    allow_headers=["*"],   # allow Authorization, etc.
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,  # keep False with "*" origins
 )
 
 if __name__ == "__main__":
