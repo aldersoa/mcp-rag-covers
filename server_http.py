@@ -8,7 +8,6 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 import uvicorn
 
-# ---------- local helpers ----------
 from covers_core import (
     route,
     search_artists_by_query,
@@ -16,6 +15,8 @@ from covers_core import (
     release_groups_for_artist,
     mb_get,
 )
+from vibe_core import build_vibe_board
+from rag_llm import summarize_vibe
 
 def rpc_ok(_id: Any, result: Dict[str, Any]) -> JSONResponse:
     return JSONResponse({"jsonrpc": "2.0", "id": _id, "result": result})
@@ -30,7 +31,7 @@ SEARCH_SCHEMA = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "SearchArgs",
     "type": "object",
-    "properties": {"query": {"type": "string"}},
+    "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}},
     "required": ["query"],
 }
 FETCH_SCHEMA = {
@@ -40,6 +41,29 @@ FETCH_SCHEMA = {
     "properties": {"id": {"type": "string"}},
     "required": ["id"],
 }
+VIBE_SCHEMA = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "VibeBoardArgs",
+    "type": "object",
+    "properties": {
+        "query": {"type": "string"},
+        "limit": {"type": "integer", "minimum": 4, "maximum": 24, "default": 12},
+        "debug": {"type": "boolean", "default": False}
+    },
+    "required": ["query"]
+}
+RAG_SCHEMA = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "RagSummarizeArgs",
+    "type": "object",
+    "properties": {
+        "json":  {"type": "string", "title": "Vibe board JSON as string"},
+        "style": {"type": "string", "title": "Optional style guidance"}
+    },
+    "required": ["json"],
+    "additionalProperties": False
+}
+
 TOOLS = [
     {
         "name": "search",
@@ -52,6 +76,18 @@ TOOLS = [
         "description": "Fetch details for a release group by ID",
         "inputSchema": FETCH_SCHEMA,
         "input_schema": FETCH_SCHEMA,
+    },
+    {
+        "name": "vibe_board",
+        "description": "Build a color-based 'vibe board' from top release-group covers for a query.",
+        "inputSchema": VIBE_SCHEMA,
+        "input_schema": VIBE_SCHEMA,
+    },
+    {
+        "name": "rag_summarize",
+        "description": "LLM: Summarize a vibe board JSON into a short mood paragraph.",
+        "inputSchema": RAG_SCHEMA,
+        "input_schema": RAG_SCHEMA,
     },
 ]
 
@@ -91,6 +127,28 @@ async def tool_fetch(rgid: str) -> Dict[str, Any]:
     text = f"Title: {title}\nArtist: {artist}\nMusicBrainz URL: {mb_rg_url(rgid)}"
     return {"id": rgid, "title": f"{artist} — {title}" if artist else title, "text": text, "url": mb_rg_url(rgid)}
 
+async def tool_vibe_board(query: str, limit: int = 12, debug: bool = False) -> Dict[str, Any]:
+    base = await tool_search(query, limit=limit)
+    items = base.get("results", [])
+    if not items:
+        return {"query": query, "groups": [], **({"debug": []} if debug else {})}
+    vibe = await build_vibe_board(items, max_items=limit, debug=debug)
+    return {"query": query, **vibe}
+
+async def tool_rag_summarize(board_json_str: str, style: str = "") -> Dict[str, Any]:
+    # Validate JSON (and keep the raw string for exact LLM input)
+    try:
+        parsed = json.loads(board_json_str)
+    except Exception:
+        return {"summary": "", "error": "Invalid JSON string for 'json' argument."}
+    if not parsed.get("groups"):
+        return {"summary": "", "error": "No groups found in vibe board JSON."}
+    try:
+        paragraph = await summarize_vibe(board_json_str, style=style or "")
+        return {"summary": paragraph}
+    except Exception as e:
+        return {"summary": "", "error": f"LLM backend error: {e}"}
+
 async def mcp_endpoint(request):
     if request.method != "POST":
         return PlainTextResponse("MCP expects POST JSON-RPC 2.0", status_code=405)
@@ -99,23 +157,37 @@ async def mcp_endpoint(request):
     except Exception:
         return PlainTextResponse("Bad Request", status_code=400)
     _id, method, params = body.get("id"), body.get("method"), body.get("params", {}) or {}
+
     if method == "initialize":
-        return rpc_ok(_id, {"serverInfo": {"name": "covers-mcp", "version": "0.2.0"},
+        return rpc_ok(_id, {"serverInfo": {"name": "covers-mcp", "version": "0.4.0"},
                             "protocol": "mcp", "capabilities": {"tools": {"listChanged": False}}})
     if method == "tools/list":
         return rpc_ok(_id, {"tools": TOOLS})
     if method == "tools/call":
         name, args = params.get("name"), params.get("arguments", {}) or {}
         if name == "search":
-            payload = await tool_search(args.get("query", ""))
+            payload = await tool_search(args.get("query", ""), limit=args.get("limit", 12))
             return rpc_ok(_id, {"content": [{"type": "text", "text": json.dumps(payload)}]})
         if name == "fetch":
             payload = await tool_fetch(args.get("id", ""))
             return rpc_ok(_id, {"content": [{"type": "text", "text": json.dumps(payload)}]})
+        if name == "vibe_board":
+            payload = await tool_vibe_board(
+                args.get("query", ""),
+                limit=args.get("limit", 12),
+                debug=args.get("debug", False),
+            )
+            return rpc_ok(_id, {"content": [{"type": "text", "text": json.dumps(payload)}]})
+        if name == "rag_summarize":
+            payload = await tool_rag_summarize(
+                args.get("json", ""),
+                style=args.get("style", ""),
+            )
+            return rpc_ok(_id, {"content": [{"type": "text", "text": json.dumps(payload)}]})
         return rpc_err(_id, -32601, f"Unknown tool: {name}")
+
     return rpc_err(_id, -32601, "Method not found")
 
-# ---------- app ----------
 app = Starlette(
     debug=False,
     routes=[
@@ -125,7 +197,6 @@ app = Starlette(
     ],
 )
 
-# static files
 public_dir = os.path.join(os.path.dirname(__file__), "public")
 if os.path.isdir(public_dir):
     app.mount("/", StaticFiles(directory=public_dir, html=True), name="static")

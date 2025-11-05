@@ -2,7 +2,7 @@ import os, httpx
 from typing import Any, Dict, List, Optional
 
 MB_WS = "https://musicbrainz.org/ws/2"
-MB_UA = os.getenv("MB_USER_AGENT", "covers-mcp/0.2.0 (contact@example.com)")
+MB_UA = os.getenv("MB_USER_AGENT", "covers-mcp/0.3.0 (contact@example.com)")
 
 def route(q: str) -> Dict[str, str]:
     q = (q or "").strip()

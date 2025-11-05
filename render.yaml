@@ -1,9 +1,0 @@
-# render.yaml
-services:
-  - type: web
-    name: mcp-covers
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python server_http.py
-    plan: free
-    region: oregon
