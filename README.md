@@ -1,7 +1,3 @@
-from pathlib import Path
-
-readme_content = """# MCP RAG Covers (Python)
-
 A lightweight **MCP server** that lets you:
 - 🔍 Search MusicBrainz for release groups  
 - 🎨 Build a color-clustered **Vibe Board** from Cover Art Archive images  
@@ -45,8 +41,6 @@ pip install -r requirements.txt
 #### Required: MusicBrainz user agent
 ~~~bash
 export MB_USER_AGENT="covers-mcp/0.4.0 (you@example.com)"
-# Windows PowerShell:
-# $env:MB_USER_AGENT="covers-mcp/0.4.0 (you@example.com)"
 ~~~
 
 > MusicBrainz requires a valid, identifying `User-Agent` with contact info.
@@ -145,22 +139,4 @@ curl -s -X POST http://127.0.0.1:8000/mcp \
 - Reduce `limit` (6–8)
 - For OpenAI: use `gpt-4o-mini` or switch to Ollama
 
-### Ollama not connecting
-- Ensure `ollama serve` is running and port `11434` is open
 
----
-
-## 🔐 Security
-- Never share or commit API keys.  
-- Keep secrets **server-side** only (don’t put them in `public/main.js`).  
-- Rotate keys regularly.
-
----
-
-## 📄 License
-MIT (or any license you prefer)
-"""
-
-Path("/mnt/data/README.md").write_text(readme_content)
-
-"/mnt/data/README.md"
