@@ -1,3 +1,5 @@
+## Overview
+
 A lightweight **MCP server** that lets you:
 - 🔍 Search MusicBrainz for release groups  
 - 🎨 Build a color-clustered **Vibe Board** from Cover Art Archive images  
@@ -7,7 +9,7 @@ It also serves a small web UI at **http://localhost:8000** where you can search,
 
 ---
 
-## ✨ Features
+## Features
 - **MCP Tools:** `search`, `fetch`, `vibe_board`, `rag_summarize`
 - **Smart art retrieval:** tries both release-group and release-level art
 - **Color analysis:** K-Means palette clustering and HSV statistics
@@ -15,7 +17,7 @@ It also serves a small web UI at **http://localhost:8000** where you can search,
 
 ---
 
-## 📦 Requirements
+## Requirements
 - Python **3.10+**
 - macOS / Linux / Windows (PowerShell)
 - Internet access (for MusicBrainz + CAA)
@@ -23,7 +25,7 @@ It also serves a small web UI at **http://localhost:8000** where you can search,
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Create and activate a virtual environment
 ~~~bash
